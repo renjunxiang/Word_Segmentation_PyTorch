@@ -2,6 +2,17 @@ import torch
 from torch.utils.data import Dataset
 from flair.data import Sentence
 
+START_TAG = "<START>"
+STOP_TAG = "<STOP>"
+PAD_TAG = "<PAD>"
+tag_to_ix = {
+    START_TAG: 0,
+    STOP_TAG: 1,
+    PAD_TAG: 2,
+    'B': 3, 'M': 4, 'E': 5,
+    'S': 6
+}
+
 
 # 定义数据读取方式
 class DatasetRNN(Dataset):
@@ -17,22 +28,25 @@ class DatasetRNN(Dataset):
 
 
 class DatasetBERT(Dataset):
-    def __init__(self, texts, y_seq, embedding):
+    def __init__(self, texts_pad, y_seq, embedding):
         self.embedding = embedding
-        self.texts = texts
+        self.texts_pad = texts_pad
         self.y_seq = y_seq
 
     def __getitem__(self, index):
-        text = ' '.join(self.texts[index])
-        sentence = Sentence(text)
-
         # 数据中有一些表情乱码,bert出现oov
         try:
+            text_pad = ' '.join(self.texts_pad[index])
+            sentence = Sentence(text_pad)
             self.embedding.embed(sentence)
-            x = torch.Tensor([token.embedding.numpy() for token in sentence])
+            x = torch.cat([token.embedding.unsqueeze(0) for token in sentence], dim=0)
+            return x, self.y_seq[index]
         except:
-            x = torch.Tensor([0])
-        return x, self.y_seq[index]
+            text_pad = ' '.join(['|'] * len(self.texts_pad[index]))
+            sentence = Sentence(text_pad)
+            self.embedding.embed(sentence)
+            x = torch.cat([token.embedding.unsqueeze(0) for token in sentence], dim=0)
+            return x, torch.LongTensor([tag_to_ix['S']] * len(self.texts_pad[index]))
 
     def __len__(self):
         return len(self.y_seq)

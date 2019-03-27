@@ -11,23 +11,23 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 EMBEDDING_DIM = 256
 HIDDEN_DIM = 256
-num_words = 3000
 
 START_TAG = "<START>"
 STOP_TAG = "<STOP>"
-
+PAD_TAG = "<PAD>"
 tag_to_ix = {
     START_TAG: 0,
     STOP_TAG: 1,
-    'B': 2, 'M': 3, 'E': 4,
-    'S': 5
+    PAD_TAG: 2,
+    'B': 3, 'M': 4, 'E': 5,
+    'S': 6
 }
 
 ix_to_tag = {tag_to_ix[ix]: ix for ix in tag_to_ix}
 
 with open(DIR + '/data/word_index.pkl', 'rb') as f:
     word_index = pickle.load(f)
-
+num_words = len(word_index)
 
 def test(dir_model, feature='LSTM'):
     if feature == 'BERT':
@@ -46,11 +46,11 @@ def test(dir_model, feature='LSTM'):
                     # 文本转编码
                     x_test = Sentence(' '.join(text.replace(' ', '|')))
                     embedding.embed(x_test)
-                    x_test = torch.Tensor(([token.embedding.numpy() for token in x_test])).to(device)
+                    x_test = torch.cat([token.embedding.unsqueeze(0) for token in x_test], dim=0).unsqueeze(0).to(device)
                     # 输出标注结果
-                    score, test_tag = model(x_test.view([-1, 768]))
+                    test_tag = model(x_test)[0]
                     tag = [ix_to_tag[ix] for ix in test_tag]
-                    print(tag)
+                    # print(tag)
                     result = re.finditer("S|BM*E", ''.join(tag))
                     # 定位实体,即"词语"
                     result = [[m.start(), m.end()] for m in result]
@@ -58,12 +58,12 @@ def test(dir_model, feature='LSTM'):
                     for i in result:
                         text_cut += ('/' + text[i[0]:i[1]])
 
-                    print('\n分词结果: ', text_cut, '\n')
+                    print('\n分词结果:\n', text_cut, '\n')
             else:
                 break
     else:
         # 导入训练好的模型
-        model = BiLSTM_CRF(vocab_size=num_words + 2,
+        model = BiLSTM_CRF(vocab_size=num_words + 1,
                            tag_to_ix=tag_to_ix,
                            embedding_dim=EMBEDDING_DIM,
                            hidden_dim=HIDDEN_DIM)
@@ -76,25 +76,25 @@ def test(dir_model, feature='LSTM'):
             if text != 'quit':
                 with torch.no_grad():
                     # 文本转编码
-                    x_test = [word_index.get(char, num_words + 1) for char in text]
-                    x_test = torch.LongTensor(x_test).to(device)
+                    x_test = [word_index.get(char, num_words) for char in text]
+                    x_test = torch.LongTensor([x_test]).to(device)
                     # 输出标注结果
-                    score, test_tag = model(x_test)
+                    test_tag = model(x_test)[0]
                     tag = [ix_to_tag[ix] for ix in test_tag]
                     result = re.finditer("S|BM*E", ''.join(tag))
                     # 定位实体,即"词语"
                     result = [[m.start(), m.end()] for m in result]
                     text_cut = ''
                     for i in result:
-                        text_cut += (' ', text[i[0]:i[1]], ' ')
+                        text_cut += ('/' + text[i[0]:i[1]])
 
-                    print('\n分词结果: ', text_cut, '\n')
+                    print('\n分词结果:\n', text_cut, '\n')
             else:
                 break
 
 
 if __name__ == '__main__':
-    # _dir_model = DIR + '/model/LSTM_003.pth'
+    # _dir_model = DIR + '/model/LSTM_002.pth'
     # test(_dir_model, 'LSTM')
 
     _dir_model = DIR + '/model/BERT_002.pth'
