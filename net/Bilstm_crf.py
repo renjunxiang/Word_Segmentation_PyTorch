@@ -20,7 +20,8 @@ class BiLSTM_CRF(nn.Module):
 
         self.word_embeds = nn.Embedding(vocab_size, embedding_dim)
         self.lstm = nn.LSTM(embedding_dim, hidden_dim // 2,
-                            num_layers=1, bidirectional=True)
+                            num_layers=1, bidirectional=True,
+                            batch_first=True)
         self.hidden2tag = nn.Linear(hidden_dim, self.tagset_size)
         self.hidden = self.init_hidden()
         self.crf = CRF(self.tagset_size, batch_first=True)
