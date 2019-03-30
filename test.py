@@ -1,5 +1,6 @@
 import torch
 from net import BiLSTM_CRF, BERT_CRF
+from data import tag_to_ix
 from flair.embeddings import BertEmbeddings
 from flair.data import Sentence
 import pickle
@@ -12,22 +13,12 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 EMBEDDING_DIM = 256
 HIDDEN_DIM = 256
 
-START_TAG = "<START>"
-STOP_TAG = "<STOP>"
-PAD_TAG = "<PAD>"
-tag_to_ix = {
-    START_TAG: 0,
-    STOP_TAG: 1,
-    PAD_TAG: 2,
-    'B': 3, 'M': 4, 'E': 5,
-    'S': 6
-}
-
 ix_to_tag = {tag_to_ix[ix]: ix for ix in tag_to_ix}
 
 with open(DIR + '/data/word_index.pkl', 'rb') as f:
     word_index = pickle.load(f)
 num_words = len(word_index)
+
 
 def test(dir_model, feature='LSTM'):
     if feature == 'BERT':
@@ -43,10 +34,11 @@ def test(dir_model, feature='LSTM'):
             text = input()
             if text != 'quit':
                 with torch.no_grad():
-                    # 文本转编码
+                    # 文本转tensor
                     x_test = Sentence(' '.join(text.replace(' ', '|')))
                     embedding.embed(x_test)
-                    x_test = torch.cat([token.embedding.unsqueeze(0) for token in x_test], dim=0).unsqueeze(0).to(device)
+                    x_test = torch.cat([token.embedding.unsqueeze(0) for token in x_test], dim=0).unsqueeze(0).to(
+                        device)
                     # 输出标注结果
                     test_tag = model(x_test)[0]
                     tag = [ix_to_tag[ix] for ix in test_tag]
@@ -63,7 +55,7 @@ def test(dir_model, feature='LSTM'):
                 break
     else:
         # 导入训练好的模型
-        model = BiLSTM_CRF(vocab_size=num_words + 1,
+        model = BiLSTM_CRF(vocab_size=num_words + 2,
                            tag_to_ix=tag_to_ix,
                            embedding_dim=EMBEDDING_DIM,
                            hidden_dim=HIDDEN_DIM)
@@ -97,5 +89,5 @@ if __name__ == '__main__':
     # _dir_model = DIR + '/model/LSTM_002.pth'
     # test(_dir_model, 'LSTM')
 
-    _dir_model = DIR + '/model/BERT_002.pth'
+    _dir_model = DIR + '/model/BERT_003.pth'
     test(_dir_model, 'BERT')

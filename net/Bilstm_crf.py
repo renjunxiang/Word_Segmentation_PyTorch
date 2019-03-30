@@ -2,6 +2,8 @@ import torch
 import torch.nn as nn
 from torchcrf import CRF
 
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
 
 class BiLSTM_CRF(nn.Module):
     """
@@ -11,11 +13,12 @@ class BiLSTM_CRF(nn.Module):
 
     def __init__(self, vocab_size, tag_to_ix,
                  embedding_dim=256,
-                 hidden_dim=256):
+                 hidden_dim=256,
+                 mask=False):
         super(BiLSTM_CRF, self).__init__()
         self.vocab_size = vocab_size
+        self.mask = mask
         self.hidden_dim = hidden_dim
-        self.tag_to_ix = tag_to_ix
         self.tagset_size = len(tag_to_ix)
 
         self.word_embeds = nn.Embedding(vocab_size, embedding_dim)
@@ -39,7 +42,19 @@ class BiLSTM_CRF(nn.Module):
         :return:
         """
         embeds = self.word_embeds(sentences)
-        features, self.hidden = self.lstm(embeds)
+        if self.mask:
+            mask_idx = 1 - torch.eq(sentences, 0)
+            self.mask_idx = mask_idx
+            lengths = mask_idx.sum(dim=1)
+            embeds = nn.utils.rnn.pack_padded_sequence(input=embeds,
+                                                       lengths=lengths,
+                                                       batch_first=True)
+            features, self.hidden = self.lstm(embeds)
+            features = nn.utils.rnn.pad_packed_sequence(sequence=features,
+                                                        batch_first=True,
+                                                        padding_value=0)[0]
+        else:
+            features, self.hidden = self.lstm(embeds)
 
         return features
 
@@ -57,7 +72,10 @@ class BiLSTM_CRF(nn.Module):
         """
         features = self._get_sentence_features(sentences)
         feats = self._get_sentence_feats(features)
-        loss = -self.crf(feats, tags, reduction='mean')
+        if self.mask:
+            loss = -self.crf(feats, tags, self.mask_idx, reduction='mean')
+        else:
+            loss = -self.crf(feats, tags, reduction='mean')
 
         return loss
 

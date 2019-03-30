@@ -1,7 +1,8 @@
 import torch
 import torch.optim as optim
 from flair.embeddings import BertEmbeddings
-from net import BiLSTM_CRF, BERT_CRF, DatasetRNN, DatasetBERT
+from net import BiLSTM_CRF, BERT_CRF, DatasetRNN, collate_fn_RNN, DatasetBERT, collate_fn_BERT
+from data import tag_to_ix
 import pickle
 import os
 
@@ -13,19 +14,8 @@ EMBEDDING_DIM = 256
 HIDDEN_DIM = 256
 BATCH_SIZE = 64
 
-START_TAG = "<START>"
-STOP_TAG = "<STOP>"
-PAD_TAG = "<PAD>"
-tag_to_ix = {
-    START_TAG: 0,
-    STOP_TAG: 1,
-    PAD_TAG: 2,
-    'B': 3, 'M': 4, 'E': 5,
-    'S': 6
-}
 
-
-def train(epochs=5, feature='LSTM'):
+def train(epochs=5, feature='LSTM', mask=False):
     # 导入预处理标签
     with open(DIR + '/data/texts_tags.pkl', 'rb') as f:
         texts_tags = pickle.load(f)
@@ -33,7 +23,7 @@ def train(epochs=5, feature='LSTM'):
     # 模型网络
     if feature == 'BERT':
         # 导入文本
-        with open(DIR + '/data/texts_pad.pkl', 'rb') as f:
+        with open(DIR + '/data/texts.pkl', 'rb') as f:
             texts_pad = pickle.load(f)
 
         # 导入BERT预训练模型
@@ -41,13 +31,13 @@ def train(epochs=5, feature='LSTM'):
 
         trainloader = torch.utils.data.DataLoader(
             dataset=DatasetBERT(texts_pad[:-100], texts_tags[:-100], embedding),
-            batch_size=BATCH_SIZE, shuffle=True)
+            batch_size=BATCH_SIZE, shuffle=True, collate_fn=collate_fn_BERT)
 
         testloader = torch.utils.data.DataLoader(
             dataset=DatasetBERT(texts_pad[-100:], texts_tags[-100:], embedding),
-            batch_size=BATCH_SIZE, shuffle=True)
+            batch_size=BATCH_SIZE, shuffle=True, collate_fn=collate_fn_BERT)
 
-        model = BERT_CRF(tag_to_ix=tag_to_ix).to(device)
+        model = BERT_CRF(tag_to_ix=tag_to_ix, mask=mask).to(device)
 
         # 优化器
         optimizer = optim.Adam(model.parameters(), lr=0.01, weight_decay=1e-4)
@@ -69,7 +59,7 @@ def train(epochs=5, feature='LSTM'):
                 sum_loss += loss.item()
 
                 if (i + 1) % 10 == 0:
-                    print('Epoch: %d ,batch: %d, loss = %f' % (epoch, i + 1, sum_loss / 10))
+                    print('Epoch: %d ,batch: %d, loss = %f' % (epoch + 1, i + 1, sum_loss / 10))
                     sum_loss = 0.0
 
             torch.save(model.state_dict(),
@@ -96,17 +86,18 @@ def train(epochs=5, feature='LSTM'):
 
         trainloader = torch.utils.data.DataLoader(
             dataset=DatasetRNN(texts_seq[:-100], texts_tags[:-100]),
-            batch_size=BATCH_SIZE, shuffle=True)
+            batch_size=BATCH_SIZE, shuffle=True, collate_fn=collate_fn_RNN)
 
         testloader = torch.utils.data.DataLoader(
             dataset=DatasetRNN(texts_seq[-100:], texts_tags[-100:]),
-            batch_size=BATCH_SIZE, shuffle=True)
+            batch_size=BATCH_SIZE, shuffle=True, collate_fn=collate_fn_RNN)
 
         # vocab_size还有pad和unknow
-        model = BiLSTM_CRF(vocab_size=len(word_index) + 1,
+        model = BiLSTM_CRF(vocab_size=len(word_index) + 2,
                            tag_to_ix=tag_to_ix,
                            embedding_dim=EMBEDDING_DIM,
-                           hidden_dim=HIDDEN_DIM).to(device)
+                           hidden_dim=HIDDEN_DIM,
+                           mask=mask).to(device)
 
         # 优化器
         optimizer = optim.Adam(model.parameters(), lr=0.01, weight_decay=1e-4)
@@ -128,7 +119,7 @@ def train(epochs=5, feature='LSTM'):
                 sum_loss += loss.item()
 
                 if (i + 1) % 10 == 0:
-                    print('Epoch: %d ,batch: %d, loss = %f' % (epoch, i + 1, sum_loss / 10))
+                    print('Epoch: %d ,batch: %d, loss = %f' % (epoch + 1, i + 1, sum_loss / 10))
                     sum_loss = 0.0
 
             torch.save(model.state_dict(),
@@ -147,5 +138,6 @@ def train(epochs=5, feature='LSTM'):
                     n += 1
                 print('test loss = %f' % (sum_loss / n))
 
+
 if __name__ == '__main__':
-    train(epochs=3, feature='LSTM')
+    train(epochs=5, feature='BERT', mask=True)

@@ -2,6 +2,8 @@ import torch
 import torch.nn as nn
 from torchcrf import CRF
 
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
 
 class BERT_CRF(nn.Module):
     """
@@ -9,22 +11,28 @@ class BERT_CRF(nn.Module):
     官方为cpu,要在gpu中运行,所有单独生成的tensor需要.to(device)导入gpu
     """
 
-    def __init__(self, tag_to_ix):
+    def __init__(self, tag_to_ix, mask=False):
         super(BERT_CRF, self).__init__()
         self.hidden_dim = 768  # BERT最后一层维度=768
+        self.mask = mask
         self.tag_to_ix = tag_to_ix
         self.tagset_size = len(tag_to_ix)
 
         self.hidden2tag = nn.Linear(self.hidden_dim, self.tagset_size)
         self.crf = CRF(self.tagset_size, batch_first=True)
 
-    def _get_sentence_features(self, sentence):
+    def _get_sentence_features(self, sentences):
         """
         用BERT抽取特征,保持结构统一直接输出,[time_step,768]
-        :param sentence:
+        :param sentences:
         :return:
         """
-        return sentence
+        if self.mask:
+            mask_idx = 1 - torch.eq(sentences, 0)
+            mask_idx = (mask_idx.sum(dim=2) > 0)
+            self.mask_idx = mask_idx
+
+        return sentences
 
     def _get_sentence_feats(self, features):
         feats = self.hidden2tag(features)
@@ -40,7 +48,10 @@ class BERT_CRF(nn.Module):
         """
         features = self._get_sentence_features(sentences)
         feats = self._get_sentence_feats(features)
-        loss = -self.crf(feats, tags, reduction='mean')
+        if self.mask:
+            loss = -self.crf(feats, tags, self.mask_idx, reduction='mean')
+        else:
+            loss = -self.crf(feats, tags, reduction='mean')
 
         return loss
 
