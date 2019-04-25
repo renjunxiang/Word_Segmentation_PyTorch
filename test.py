@@ -29,13 +29,15 @@ def test(dir_model, feature='LSTM'):
 
         # 导入BERT预训练模型
         embedding = BertEmbeddings('bert-base-chinese', '-1', 'mean')
+        vocab = embedding.tokenizer.vocab
         while True:
             print('输入文本,结束输入"quit":\n')
             text = input()
             if text != 'quit':
                 with torch.no_grad():
                     # 文本转tensor
-                    x_test = Sentence(' '.join(text.replace(' ', '|')))
+                    sentence = [c if c in vocab else '[UNK]' for c in text]
+                    x_test = Sentence(' '.join(sentence))
                     embedding.embed(x_test)
                     x_test = torch.cat([token.embedding.unsqueeze(0) for token in x_test], dim=0).unsqueeze(0).to(
                         device)
@@ -89,5 +91,5 @@ if __name__ == '__main__':
     # _dir_model = DIR + '/model/LSTM_002.pth'
     # test(_dir_model, 'LSTM')
 
-    _dir_model = DIR + '/model/BERT_003.pth'
+    _dir_model = DIR + '/model/BERT_005.pth'
     test(_dir_model, 'BERT')

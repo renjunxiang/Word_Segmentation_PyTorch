@@ -1,6 +1,7 @@
 import torch
 from torch.utils.data import Dataset
 from flair.data import Sentence
+from flair.embeddings import BertEmbeddings
 from data import tag_to_ix
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -45,26 +46,20 @@ def collate_fn_RNN(batch):
     return batch_x, batch_y
 
 
+# 导入BERT预训练模型
+embedding = BertEmbeddings('bert-base-chinese', '-1', 'mean')
+vocab = embedding.tokenizer.vocab
+
+
 class DatasetBERT(Dataset):
-    def __init__(self, texts, y_seq, embedding):
+    def __init__(self, texts, y_seq):
         self.embedding = embedding
+        self.vocab = embedding.tokenizer.vocab
         self.texts = texts
         self.y_seq = y_seq
 
     def __getitem__(self, index):
-        # 数据中有一些表情乱码,bert出现oov
-        try:
-            text = ' '.join(self.texts[index])
-            sentence = Sentence(text)
-            self.embedding.embed(sentence)
-            x = torch.cat([token.embedding.unsqueeze(0) for token in sentence], dim=0)
-            return x, self.y_seq[index]
-        except:
-            text = ' '.join(['|'] * len(self.texts[index]))
-            sentence = Sentence(text)
-            self.embedding.embed(sentence)
-            x = torch.cat([token.embedding.unsqueeze(0) for token in sentence], dim=0)
-            return x, [tag_to_ix['S']] * len(self.texts[index])
+        return self.texts[index], self.y_seq[index]
 
     def __len__(self):
         return len(self.y_seq)
@@ -75,12 +70,19 @@ def collate_fn_BERT(batch):
     len_max = max(batch_len)
     batch_x, batch_y = [], []
 
-    # x填充torch.zeros(768),y填充0
-    for i in batch:
-        batch_x.append(torch.cat([i[0], torch.zeros(len_max - len(i[0]), 768)], dim=0).unsqueeze(0))
-        batch_y.append(i[1] + [0] * (len_max - len(i[0])))
+    # 数据中有一些表情乱码,bert出现oov,未登录登记[UNK],填充torch.zeros([768])
+    for text, seq in batch:
+        text = [c if c in vocab else '[UNK]' for c in text]
+        text = ' '.join(text)
+        sentence = Sentence(text)
+        embedding.embed(sentence)
+        x = torch.stack([token.embedding for token in sentence], dim=0)
+        x = torch.cat([x, torch.zeros([len_max - len(seq), 768])], dim=0)
+        batch_x.append(x)
+        batch_y.append(seq + [0] * (len_max - len(seq)))
 
-    batch_x = torch.cat(batch_x, dim=0)
+    batch_x = torch.stack(batch_x, dim=0)
     batch_y = torch.LongTensor(batch_y)
 
     return batch_x, batch_y
+

@@ -4,7 +4,7 @@ import os
 DIR = os.path.dirname(os.path.abspath(__file__))
 
 
-def load_data(minlen=30):
+def load_data(minlen=30, maxlen=100):
     f = open(DIR + '/xiaohuangji50w_nofenci.conv',
              encoding='utf-8')
     texts = []
@@ -13,7 +13,7 @@ def load_data(minlen=30):
         line = f.readline()
         text = re.sub('M |\n', '', line)
         text = re.sub('\s', '|', text)
-        if len(text) >= minlen:
+        if len(text) >= minlen and len(text) <= maxlen:
             texts.append(text)
     f.close()
     return texts

@@ -1,6 +1,5 @@
 import torch
 import torch.optim as optim
-from flair.embeddings import BertEmbeddings
 from net import BiLSTM_CRF, BERT_CRF, DatasetRNN, collate_fn_RNN, DatasetBERT, collate_fn_BERT
 from data import tag_to_ix
 import pickle
@@ -26,15 +25,12 @@ def train(epochs=5, feature='LSTM', mask=False):
         with open(DIR + '/data/texts.pkl', 'rb') as f:
             texts_pad = pickle.load(f)
 
-        # 导入BERT预训练模型
-        embedding = BertEmbeddings('bert-base-chinese', '-1', 'mean')
-
         trainloader = torch.utils.data.DataLoader(
-            dataset=DatasetBERT(texts_pad[:-100], texts_tags[:-100], embedding),
+            dataset=DatasetBERT(texts_pad[:-100], texts_tags[:-100]),
             batch_size=BATCH_SIZE, shuffle=True, collate_fn=collate_fn_BERT)
 
         testloader = torch.utils.data.DataLoader(
-            dataset=DatasetBERT(texts_pad[-100:], texts_tags[-100:], embedding),
+            dataset=DatasetBERT(texts_pad[-100:], texts_tags[-100:]),
             batch_size=BATCH_SIZE, shuffle=True, collate_fn=collate_fn_BERT)
 
         model = BERT_CRF(tag_to_ix=tag_to_ix, mask=mask).to(device)
@@ -125,19 +121,17 @@ def train(epochs=5, feature='LSTM', mask=False):
             torch.save(model.state_dict(),
                        './model/%s_%03d.pth' % (feature, epoch + 1))
 
-            # 每跑完一次epoch测试一下准确率
-            with torch.no_grad():
-                sum_loss = 0.0
-                n = 0
-                for data in testloader:
-                    x_seq_batch, y_seq_batch = data
-                    x_seq_batch = x_seq_batch.to(device)
-                    y_seq_batch = y_seq_batch.to(device)
-                    loss = model.neg_log_likelihood(x_seq_batch, y_seq_batch)
-                    sum_loss += loss.item()
-                    n += 1
-                print('test loss = %f' % (sum_loss / n))
-
+            # 每跑完一次epoch测试一下loss
+            sum_loss = 0.0
+            n = 0
+            for data in testloader:
+                x_seq_batch, y_seq_batch = data
+                x_seq_batch = x_seq_batch.to(device)
+                y_seq_batch = y_seq_batch.to(device)
+                loss = model.neg_log_likelihood(x_seq_batch, y_seq_batch)
+                sum_loss += loss.item()
+                n += 1
+            print('test loss = %f' % (sum_loss / n))
 
 if __name__ == '__main__':
     train(epochs=5, feature='BERT', mask=True)
